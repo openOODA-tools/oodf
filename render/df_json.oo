@@ -1,0 +1,69 @@
+// # oodf JSON Serialization Engine
+//
+// Logline: Converts filesystem mount records and capacity analytics into standard JSON documents.
+//
+// Setup: Demands no ambient authority; operates on pure MountEntry records.
+//
+// Beats:
+//   1. Serialize individual MountEntry records into key-value JSON objects.
+//   2. Escape string literals safely for compliant JSON output.
+//   3. Serialize lists of mount entries into formatted JSON arrays.
+//   4. Deliver structured machine-readable storage telemetry for MCP and CLI pipelines.
+
+import "core/df_types.oo";
+
+fn escape_json_str(s: String) -> String {
+    let n: Int = chars_len(s);
+    let mut out: String = "";
+    let mut i: Int = 0;
+    while i < n {
+        let ch: Int = byte_at(s, i);
+        if ch == 34 { // quote
+            out = out + "\\\"";
+        } else if ch == 92 { // backslash
+            out = out + "\\\\";
+        } else if ch == 10 { // newline
+            out = out + "\\n";
+        } else if ch == 9 { // tab
+            out = out + "\\t";
+        } else {
+            out = out + str_slice(s, i, i + 1);
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn mount_to_json(m: MountEntry) -> String {
+    let mut s: String = "{";
+    s = s + "\"filesystem\":\"" + escape_json_str(m.filesystem) + "\",";
+    s = s + "\"mount_point\":\"" + escape_json_str(m.mount_point) + "\",";
+    s = s + "\"type\":\"" + escape_json_str(m.fs_type) + "\",";
+    s = s + "\"total_kb\":" + to_string(m.total_kb) + ",";
+    s = s + "\"used_kb\":" + to_string(m.used_kb) + ",";
+    s = s + "\"avail_kb\":" + to_string(m.avail_kb) + ",";
+    s = s + "\"use_pct\":" + to_string(m.use_pct) + ",";
+    s = s + "\"inodes_total\":" + to_string(m.inodes_total) + ",";
+    s = s + "\"inodes_used\":" + to_string(m.inodes_used) + ",";
+    s = s + "\"inodes_free\":" + to_string(m.inodes_free) + ",";
+    s = s + "\"inodes_pct\":" + to_string(m.inodes_pct) + ",";
+    s = s + "\"is_pseudo\":" + (if m.is_pseudo { "true" } else { "false" });
+    s = s + "}";
+    return s;
+}
+
+pub fn mounts_to_json(mounts: List[MountEntry]) -> String {
+    let mut s: String = "[";
+    let n: Int = list_len(mounts);
+    let mut i: Int = 0;
+    while i < n {
+        if i > 0 {
+            s = s + ",";
+        }
+        let m: MountEntry = list_get(mounts, i);
+        s = s + mount_to_json(m);
+        i = i + 1;
+    }
+    s = s + "]";
+    return s;
+}

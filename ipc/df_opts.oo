@@ -1,0 +1,119 @@
+// # oodf CLI Arguments Parser & Option Dispatcher
+//
+// Logline: Parses command-line flags, filter switches, and formatting parameters for POSIX df and MCP operation.
+//
+// Setup: Demands no ambient authority; parses List[String] argument vectors into CliAction records.
+//
+// Beats:
+//   1. Parse POSIX flags (-h, -H, -k, -m, -i, -a) and extended options (--total, --theme, --json).
+//   2. Parse filesystem type filters (-t/--type) and exclusions (-x/--exclude-type).
+//   3. Handle positional mount paths and block device targets.
+//   4. Format help manuals and version information.
+
+import "core/df_types.oo";
+
+pub type CliAction = struct {
+    config: DfConfig,
+    is_mcp: Bool,
+    run_test: Bool,
+    show_help: Bool,
+    show_version: Bool
+};
+
+pub fn print_help() {
+    println("Usage: oodf [OPTION]... [FILE]...");
+    println("Show information about the file system on which each FILE resides,");
+    println("or all file systems by default.");
+    println("");
+    println("Options:");
+    println("  -a, --all             include pseudo, duplicate, and inaccessible file systems");
+    println("  -h, --human-readable  print sizes in powers of 1024 (e.g., 1023M, 14G)");
+    println("  -H, --si              print sizes in powers of 1000");
+    println("  -i, --inodes          list inode information instead of block usage");
+    println("  -k                    like --block-size=1K");
+    println("  -m                    like --block-size=1M");
+    println("  -t, --type=TYPE       limit listing to file systems of type TYPE");
+    println("  -x, --exclude-type=T  limit listing to file systems not of type T");
+    println("      --total           produce a grand total summary row");
+    println("  -j, --json            output raw structured telemetry in JSON format");
+    println("  -D, --demo            run synthetic multi-mount storage showcase");
+    println("      --theme=NAME      terminal ANSI palette (ember, ocean, matrix, cyber, monochrome)");
+    println("      --mcp             launch streaming MCP JSON-RPC 2.0 stdio server");
+    println("      --help            display this help and exit");
+    println("  -v, --version         output version information and exit");
+}
+
+pub fn print_version() {
+    println("oodf 0.2.0 (openOODA sovereign disk space inspector)");
+}
+
+pub fn parse_cli_args(args: List[String]) -> CliAction {
+    let mut cfg: DfConfig = default_df_config();
+    let mut is_mcp: Bool = false;
+    let mut run_test: Bool = false;
+    let mut show_help: Bool = false;
+    let mut show_ver: Bool = false;
+
+    let n: Int = list_len(args);
+    let mut i: Int = 0;
+
+    while i < n {
+        let arg: String = list_get(args, i);
+
+        if arg == "--help" {
+            show_help = true;
+        } else if arg == "-v" || arg == "--version" {
+            show_ver = true;
+        } else if arg == "--test" {
+            run_test = true;
+        } else if arg == "--mcp" {
+            is_mcp = true;
+        } else if arg == "-a" || arg == "--all" {
+            cfg.show_all = true;
+        } else if arg == "-h" || arg == "--human-readable" {
+            cfg.human_readable = true;
+        } else if arg == "-H" || arg == "--si" {
+            cfg.human_readable = true;
+            cfg.si_units = true;
+        } else if arg == "-i" || arg == "--inodes" {
+            cfg.show_inodes = true;
+        } else if arg == "-k" {
+            cfg.block_size_kb = 1;
+        } else if arg == "-m" {
+            cfg.block_size_kb = 1024;
+        } else if arg == "--total" {
+            cfg.show_total = true;
+        } else if arg == "-j" || arg == "--json" {
+            cfg.json_output = true;
+        } else if arg == "-D" || arg == "--demo" {
+            cfg.demo_mode = true;
+        } else if arg == "-t" && i + 1 < n {
+            i = i + 1;
+            cfg.type_include = list_get(args, i);
+        } else if str_starts_with(arg, "--type=") {
+            cfg.type_include = str_slice(arg, 7, chars_len(arg));
+        } else if arg == "-x" && i + 1 < n {
+            i = i + 1;
+            cfg.type_exclude = list_get(args, i);
+        } else if str_starts_with(arg, "--exclude-type=") {
+            cfg.type_exclude = str_slice(arg, 15, chars_len(arg));
+        } else if str_starts_with(arg, "--theme=") {
+            cfg.theme = str_slice(arg, 8, chars_len(arg));
+        } else if arg == "--theme" && i + 1 < n {
+            i = i + 1;
+            cfg.theme = list_get(args, i);
+        } else if !str_starts_with(arg, "-") && chars_len(arg) > 0 {
+            cfg.target_path = arg;
+        }
+
+        i = i + 1;
+    }
+
+    return CliAction {
+        config: cfg,
+        is_mcp: is_mcp,
+        run_test: run_test,
+        show_help: show_help,
+        show_version: show_ver
+    };
+}

@@ -1,0 +1,7 @@
+Package: oodf
+Version: 0.2.0-1
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: openOODA-tools <ops@openooda.org>
+Description: Sovereign filesystem free space and mount point storage auditor in pure openOODA.

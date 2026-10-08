@@ -1,0 +1,156 @@
+// # oodf JSON Parsing & Field Extraction Engine
+//
+// Logline: Robust character-indexed JSON token search and string/boolean field extraction for MCP requests.
+//
+// Setup: Demands no ambient authority; operates on immutable String inputs with exact character indices.
+//
+// Beats:
+//   1. Perform exact character-based substring search avoiding multi-byte index drift.
+//   2. Extract double-quoted string field values matching a given JSON key.
+//   3. Extract boolean field values (true/false) matching a given JSON key.
+//   4. Extract signed integer field values and escape output JSON strings.
+
+pub fn json_escape(s: String) -> String {
+    let n: Int = chars_len(s);
+    let mut out: String = "";
+    let mut i: Int = 0;
+    while i < n {
+        let ch: Int = byte_at(s, i);
+        if ch == 34 { // quote
+            out = out + "\\\"";
+        } else if ch == 92 { // backslash
+            out = out + "\\\\";
+        } else if ch == 10 { // newline
+            out = out + "\\n";
+        } else if ch == 9 { // tab
+            out = out + "\\t";
+        } else {
+            out = out + str_slice(s, i, i + 1);
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn find_sub_char(haystack: String, needle: String) -> Int {
+    let hn: Int = chars_len(haystack);
+    let nn: Int = chars_len(needle);
+    if nn == 0 {
+        return 0;
+    }
+    if hn < nn {
+        return -1;
+    }
+    let limit: Int = hn - nn;
+    let mut i: Int = 0;
+    while i <= limit {
+        let sub: String = str_slice(haystack, i, i + nn);
+        if sub == needle {
+            return i;
+        }
+        i = i + 1;
+    }
+    return -1;
+}
+
+pub fn json_extract_str_field(json: String, key: String) -> String {
+    let pat: String = "\"" + key + "\":\"";
+    let pos: Int = find_sub_char(json, pat);
+    if pos < 0 {
+        // Try with space after colon
+        let pat_sp: String = "\"" + key + "\": \"";
+        let pos_sp: Int = find_sub_char(json, pat_sp);
+        if pos_sp < 0 {
+            return "";
+        }
+        let start: Int = pos_sp + chars_len(pat_sp);
+        let n: Int = chars_len(json);
+        let mut end: Int = start;
+        while end < n {
+            let c: String = str_slice(json, end, end + 1);
+            if c == "\"" {
+                let prev: String = if end > start { str_slice(json, end - 1, end) } else { "" };
+                if prev != "\\" {
+                    return str_slice(json, start, end);
+                }
+            }
+            end = end + 1;
+        }
+        return "";
+    }
+    let start: Int = pos + chars_len(pat);
+    let n: Int = chars_len(json);
+    let mut end: Int = start;
+    while end < n {
+        let c: String = str_slice(json, end, end + 1);
+        if c == "\"" {
+            let prev: String = if end > start { str_slice(json, end - 1, end) } else { "" };
+            if prev != "\\" {
+                return str_slice(json, start, end);
+            }
+        }
+        end = end + 1;
+    }
+    return "";
+}
+
+pub fn json_extract_bool_field(json: String, key: String, default_val: Bool) -> Bool {
+    let pat1: String = "\"" + key + "\":true";
+    let pat2: String = "\"" + key + "\": true";
+    if find_sub_char(json, pat1) >= 0 || find_sub_char(json, pat2) >= 0 {
+        return true;
+    }
+    let pat3: String = "\"" + key + "\":false";
+    let pat4: String = "\"" + key + "\": false";
+    if find_sub_char(json, pat3) >= 0 || find_sub_char(json, pat4) >= 0 {
+        return false;
+    }
+    return default_val;
+}
+
+pub fn json_extract_int_field(json: String, key: String, default_val: Int) -> Int {
+    let pat1: String = "\"" + key + "\":";
+    let pos1: Int = find_sub_char(json, pat1);
+    let mut start: Int = -1;
+    if pos1 >= 0 {
+        start = pos1 + chars_len(pat1);
+    } else {
+        let pat2: String = "\"" + key + "\" :";
+        let pos2: Int = find_sub_char(json, pat2);
+        if pos2 >= 0 {
+            start = pos2 + chars_len(pat2);
+        }
+    }
+    if start < 0 {
+        return default_val;
+    }
+
+    let n: Int = chars_len(json);
+    let mut i: Int = start;
+    while i < n {
+        let c: String = str_slice(json, i, i + 1);
+        if c != " " && c != "\t" && c != "\r" && c != "\n" {
+            break;
+        }
+        i = i + 1;
+    }
+
+    let num_start: Int = i;
+    let mut val: Int = 0;
+    let mut found_digit: Bool = false;
+    while i < n {
+        let ch: Int = byte_at(json, i);
+        if ch >= 48 && ch <= 57 {
+            val = val * 10 + (ch - 48);
+            found_digit = true;
+        } else {
+            break;
+        }
+        i = i + 1;
+    }
+
+    if found_digit {
+        return val;
+    }
+    return default_val;
+}

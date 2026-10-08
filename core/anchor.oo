@@ -1,0 +1,134 @@
+// # oodf Core Test Anchor
+//
+// Logline: Verification anchor for filesystem mount parsing, storage capacity calculation, and query filtering.
+//
+// Setup: Demands no ambient authority; exercises core algorithms using deterministic test structures.
+//
+// Beats:
+//   1. Verify default configuration and pseudo filesystem classification.
+//   2. Verify mount entry parsing and unit size formatting.
+//   3. Verify query filtering by filesystem type and grand total accumulation.
+//   4. Deliver unified core test runner returning boolean status.
+
+import "core/df_types.oo";
+import "core/mount_parser.oo";
+import "core/df_query.oo";
+import "core/df_demo.oo";
+
+pub fn test_df_types() -> Bool {
+    let cfg: DfConfig = default_df_config();
+    if cfg.human_readable || cfg.show_inodes || cfg.show_all {
+        print("FAIL: default_df_config flags mismatch\n");
+        return false;
+    }
+    if cfg.block_size_kb != 1 || cfg.theme != "ember" {
+        print("FAIL: default_df_config block_size or theme mismatch\n");
+        return false;
+    }
+    return true;
+}
+
+pub fn test_mount_parser() -> Bool {
+    if !is_pseudo_fs("proc") || !is_pseudo_fs("sysfs") || !is_pseudo_fs("cgroup2") {
+        print("FAIL: is_pseudo_fs should identify pseudo filesystems\n");
+        return false;
+    }
+    if is_pseudo_fs("btrfs") || is_pseudo_fs("ext4") || is_pseudo_fs("xfs") || is_pseudo_fs("zfs") {
+        print("FAIL: is_pseudo_fs should not flag physical filesystems\n");
+        return false;
+    }
+
+    let line: String = "tmpfs /run tmpfs rw,nosuid,nodev,size=33554432k,nr_inodes=2097152 0 0";
+    let m: MountEntry = parse_mount_line(line);
+
+    if m.filesystem != "tmpfs" || m.mount_point != "/run" || m.fs_type != "tmpfs" {
+        print("FAIL: parse_mount_line identity mismatch\n");
+        return false;
+    }
+    if m.total_kb != 33554432 || m.inodes_total != 2097152 {
+        print("FAIL: parse_mount_line size/inode mismatch\n");
+        return false;
+    }
+    return true;
+}
+
+pub fn test_df_query() -> Bool {
+    let demo: List[MountEntry] = build_demo_mounts();
+    let mut cfg: DfConfig = default_df_config();
+
+    // Default filter should exclude pseudo filesystems (proc)
+    let filtered: List[MountEntry] = filter_mounts(demo, cfg);
+    if list_len(filtered) != 5 {
+        print("FAIL: filter_mounts should exclude pseudo fs by default\n");
+        return false;
+    }
+
+    // Include type filter
+    cfg.type_include = "btrfs";
+    let btrfs_only: List[MountEntry] = filter_mounts(demo, cfg);
+    if list_len(btrfs_only) != 1 || list_get(btrfs_only, 0).mount_point != "/" {
+        print("FAIL: filter_mounts type_include btrfs failed\n");
+        return false;
+    }
+
+    // Grand total summary
+    let tot: MountEntry = compute_total_summary(filtered);
+    if tot.filesystem != "total" || tot.total_kb == 0 || tot.use_pct == 0 {
+        print("FAIL: compute_total_summary failed\n");
+        return false;
+    }
+
+    // Formatting checks
+    let h1: String = format_kb_size(536870912, true, false, 1);
+    if h1 != "512G" {
+        print("FAIL: format_kb_size human mismatch: " + h1 + "\n");
+        return false;
+    }
+
+    let si1: String = format_kb_size(1000000, false, true, 1);
+    if si1 != "1G" {
+        print("FAIL: format_kb_size si mismatch: " + si1 + "\n");
+        return false;
+    }
+    return true;
+}
+
+pub fn test_df_demo() -> Bool {
+    let mounts: List[MountEntry] = build_demo_mounts();
+    if list_len(mounts) != 6 {
+        print("FAIL: build_demo_mounts count mismatch\n");
+        return false;
+    }
+
+    let doc: String = build_demo_document();
+    if !str_contains(doc, "ceph-pool:fs_data") || !str_contains(doc, "zpool-fast/containers") {
+        print("FAIL: build_demo_document missing entries\n");
+        return false;
+    }
+    return true;
+}
+
+pub fn run_core_tests() -> Bool {
+    print("Running oodf core tests...\n");
+    if !test_df_types() {
+        return false;
+    }
+    print("  ✓ df_types tests passed\n");
+
+    if !test_mount_parser() {
+        return false;
+    }
+    print("  ✓ mount_parser tests passed\n");
+
+    if !test_df_query() {
+        return false;
+    }
+    print("  ✓ df_query tests passed\n");
+
+    if !test_df_demo() {
+        return false;
+    }
+    print("  ✓ df_demo tests passed\n");
+
+    return true;
+}

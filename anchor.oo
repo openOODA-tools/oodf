@@ -1,13 +1,33 @@
-// # oodf Root Anchor
+// # oodf Root Verification Anchor
 //
-// Logline: Top-level anchor re-exporting options, core logic, render, and ipc subsystems.
+// Logline: Unified test runner aggregating verification anchors from core, render, and ipc subsystems.
 //
-// Setup: Pure shim re-exporting all oodf subsystem anchors.
+// Setup: Demands no ambient authority; invokes deterministic subsystem test routines.
 //
 // Beats:
-//   1. Re-export options parsing subsystem.
-//   2. Re-export core oodf execution engine.
-//   3. Re-export render formatting subsystem.
-//   4. Re-export Model Context Protocol (MCP) IPC subsystem.
+//   1. Execute core mount parsing, capacity query, and demo checks.
+//   2. Execute render theme palettes, table views, and JSON serialization tests.
+//   3. Execute ipc CLI argument parsing, JSON field extraction, and MCP protocol tests.
+//   4. Return aggregate boolean test result.
 
-import "main.oo";
+import "core/anchor.oo";
+import "render/anchor.oo";
+import "ipc/anchor.oo";
+
+pub fn run_all_tests() -> Bool {
+    println("=== Starting oodf Full Test Suite ===");
+    if !run_core_tests() {
+        println("FAIL: core tests failed");
+        return false;
+    }
+    if !run_all_render_tests() {
+        println("FAIL: render tests failed");
+        return false;
+    }
+    if !run_all_ipc_tests() {
+        println("FAIL: ipc tests failed");
+        return false;
+    }
+    println("=== All oodf Subsystems Verified Clean ===");
+    return true;
+}

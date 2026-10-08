@@ -1,0 +1,57 @@
+// # oodf Storage & Mount Data Types
+//
+// Logline: Data structures representing filesystem mount entries, storage capacity metrics, and runtime configurations.
+//
+// Setup: Demands no ambient authority; defines plain immutable value records.
+//
+// Beats:
+//   1. Declare MountEntry record modeling device, mount point, block sizing, and inodes.
+//   2. Declare DfConfig record capturing CLI options, unit scalers, and type filters.
+//   3. Deliver default_df_config factory initializing safe standard defaults.
+
+pub type MountEntry = struct {
+    filesystem: String,
+    mount_point: String,
+    fs_type: String,
+    total_kb: Int,
+    used_kb: Int,
+    avail_kb: Int,
+    use_pct: Int,
+    inodes_total: Int,
+    inodes_used: Int,
+    inodes_free: Int,
+    inodes_pct: Int,
+    is_pseudo: Bool
+};
+
+pub type DfConfig = struct {
+    human_readable: Bool,
+    si_units: Bool,
+    block_size_kb: Int,
+    show_inodes: Bool,
+    show_total: Bool,
+    show_all: Bool,
+    type_include: String,
+    type_exclude: String,
+    json_output: Bool,
+    demo_mode: Bool,
+    theme: String,
+    target_path: String
+};
+
+pub fn default_df_config() -> DfConfig {
+    return DfConfig {
+        human_readable: false,
+        si_units: false,
+        block_size_kb: 1,
+        show_inodes: false,
+        show_total: false,
+        show_all: false,
+        type_include: "",
+        type_exclude: "",
+        json_output: false,
+        demo_mode: false,
+        theme: "ember",
+        target_path: ""
+    };
+}

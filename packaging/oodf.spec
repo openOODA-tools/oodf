@@ -1,7 +1,7 @@
 Name:           oodf
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
-Summary:        Mount point storage inspector displaying total, used, and available blocks and inodes.
+Summary:        Filesystem free space and mount point storage auditor in pure openOODA.
 License:        ASL 2.0
 URL:            https://github.com/openOODA-tools/oodf
 Source0:        oodf-linux-x86_64
@@ -10,9 +10,10 @@ BuildArch:      x86_64
 Requires:       glibc
 
 %description
-oodf is a sovereign, capability-bounded FREE SPACE written
-in pure openOODA, featuring zero ambient authority, oote color themes,
-and an MCP stdio server.
+oodf is a sovereign, capability-bounded filesystem free space and
+storage capacity inspector written in pure openOODA, featuring zero
+ambient authority, oote terminal themes, and a streaming Model
+Context Protocol (MCP) JSON-RPC 2.0 stdio server.
 
 %install
 mkdir -p %{buildroot}/usr/bin
@@ -24,5 +25,5 @@ install -m 0755 %{SOURCE1} %{buildroot}/usr/bin/oodf-uninstall
 /usr/bin/oodf-uninstall
 
 %changelog
-* Wed Oct 07 2026 openOODA-tools <ops@openooda.org> - 0.1.0-1
-- Initial sovereign blueprint scaffolding
+* Wed Oct 08 2026 openOODA-tools <ops@openooda.org> - 0.2.0-1
+- Elevate oodf to v0.2.0 sovereign storage inspector with streaming MCP

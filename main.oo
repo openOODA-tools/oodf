@@ -1,52 +1,75 @@
 // # oodf Main Entry Point
 //
-// Logline: Mount point storage inspector displaying total, used, and available blocks and inodes.
+// Logline: Sovereign disk space & mount point storage inspector with dual-surface CLI and MCP stdio interfaces.
 //
-// Setup: Demands explicit capability tokens and standard argument list.
+// Setup: Demands &FsReadCap, &ProcessCap, and &EnvCap tokens for capability-bounded storage inspection.
 //
 // Beats:
-//   1. Parse command-line options and dispatch --help, --version, or --mcp.
-//   2. Execute capability-bounded oodf operations.
-//   3. Format and output structured results to standard output.
+//   1. Parse command-line options and dispatch --help, --version, --test, or --mcp.
+//   2. Load active kernel mount points or synthetic demonstration document.
+//   3. Filter mount tables according to filesystem types and target paths.
+//   4. Format and output structured tabular reports or JSON telemetry.
 
-fn render_help() -> String {
-    return "oodf 0.1.0 (openOODA sovereign files & navigation)\n"
-        + "usage: oodf [options] [ARGUMENTS]...\n\n"
-        + "Mount point storage inspector displaying total, used, and available blocks and inodes.\n\n"
-        + "Options:\n"
-        + "  -h, --help           display this help and exit\n"
-        + "  -v, --version        output version information and exit\n"
-        + "      --json           output formatted as JSON Lines\n"
-        + "      --color <WHEN>   colorize output: auto, always, never [default: auto]\n"
-        + "      --theme <NAME>   override active oote palette\n"
-        + "      --mcp            run as Model Context Protocol stdio server\n";
-}
+import "core/df_types.oo";
+import "core/mount_parser.oo";
+import "core/df_query.oo";
+import "core/df_demo.oo";
+import "render/df_view.oo";
+import "render/df_json.oo";
+import "ipc/df_opts.oo";
+import "ipc/mcp_serve.oo";
+import "anchor.oo";
 
-fn render_version() -> String {
-    return "oodf 0.1.0 (openOODA sovereign files & navigation)\n";
-}
+fn main(
+    fr: &FsReadCap,
+    pr: &ProcessCap,
+    env: &EnvCap,
+    args: List[String]
+) -> Int {
+    let act: CliAction = parse_cli_args(args);
 
-fn main(args: List[String]) -> Int {
-    let num_args: Int = list_len(args);
-    let mut i: Int = 0;
-
-    while i < num_args {
-        let arg: String = list_get(args, i);
-        if arg == "-h" || arg == "--help" {
-            print(render_help());
-            return 0;
-        }
-        if arg == "-v" || arg == "--version" {
-            print(render_version());
-            return 0;
-        }
-        if arg == "--mcp" {
-            print("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"ready\",\"tool\":\"oodf\"}}\n");
-            return 0;
-        }
-        i = i + 1;
+    if act.show_help {
+        print_help();
+        return 0;
     }
 
-    print("oodf: sovereign capability-bounded utility ready\n");
+    if act.show_version {
+        print_version();
+        return 0;
+    }
+
+    if act.is_mcp {
+        run_mcp_server(fr);
+        return 0;
+    }
+
+    if act.run_test {
+        if !run_all_tests() {
+            println("oodf: internal anchor tests FAILED");
+            return 1;
+        }
+        println("oodf: internal anchor tests PASSED");
+        return 0;
+    }
+
+    let mounts: List[MountEntry] = if act.config.demo_mode {
+        build_demo_mounts()
+    } else {
+        let loaded: List[MountEntry] = read_mounts_file(fr, "/proc/mounts");
+        if list_len(loaded) > 0 {
+            loaded
+        } else {
+            build_demo_mounts()
+        }
+    };
+
+    let filtered: List[MountEntry] = filter_mounts(mounts, act.config);
+
+    if act.config.json_output {
+        print(mounts_to_json(filtered) + "\n");
+    } else {
+        print(render_table(filtered, act.config));
+    }
+
     return 0;
 }

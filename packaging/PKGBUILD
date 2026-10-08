@@ -1,9 +1,9 @@
 # Maintainer: openOODA-tools <ops@openooda.org>
 pkgname=oodf-bin
 _pkgname=oodf
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
-pkgdesc="Mount point storage inspector displaying total, used, and available blocks and inodes."
+pkgdesc="Filesystem free space and mount point storage auditor in pure openOODA."
 arch=('x86_64')
 url="https://github.com/openOODA-tools/oodf"
 license=('Apache-2.0')

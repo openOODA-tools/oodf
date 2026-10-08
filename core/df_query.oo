@@ -1,0 +1,128 @@
+// # oodf Query & Capacity Aggregation Engine
+//
+// Logline: Query filters, unit scaling transformers, and grand total aggregators for filesystem tables.
+//
+// Setup: Demands no ambient authority; operates on immutable MountEntry lists and DfConfig records.
+//
+// Beats:
+//   1. Filter mount tables by filesystem type inclusion, exclusion, and target path.
+//   2. Suppress pseudo and virtual filesystems unless full auditing is enabled.
+//   3. Compute grand total summary row accumulating block and inode totals.
+//   4. Format numeric capacities into human-readable, SI, and scaled block quantities.
+
+import "core/df_types.oo";
+
+pub fn filter_mounts(mounts: List[MountEntry], cfg: DfConfig) -> List[MountEntry] {
+    let mut out: List[MountEntry] = list_new();
+    let n: Int = list_len(mounts);
+    let mut i: Int = 0;
+
+    while i < n {
+        let m: MountEntry = list_get(mounts, i);
+        let mut keep: Bool = true;
+
+        if !cfg.show_all && m.is_pseudo {
+            keep = false;
+        }
+
+        if chars_len(cfg.type_include) > 0 && m.fs_type != cfg.type_include {
+            keep = false;
+        }
+
+        if chars_len(cfg.type_exclude) > 0 && m.fs_type == cfg.type_exclude {
+            keep = false;
+        }
+
+        if chars_len(cfg.target_path) > 0 {
+            let tp: String = cfg.target_path;
+            if m.mount_point != tp && !str_starts_with(tp, m.mount_point) && m.filesystem != tp {
+                keep = false;
+            }
+        }
+
+        if keep {
+            out = list_push(out, m);
+        }
+        i = i + 1;
+    }
+
+    return out;
+}
+
+pub fn compute_total_summary(mounts: List[MountEntry]) -> MountEntry {
+    let mut tot_kb: Int = 0;
+    let mut usd_kb: Int = 0;
+    let mut avl_kb: Int = 0;
+    let mut ino_tot: Int = 0;
+    let mut ino_usd: Int = 0;
+    let mut ino_fre: Int = 0;
+
+    let n: Int = list_len(mounts);
+    let mut i: Int = 0;
+    while i < n {
+        let m: MountEntry = list_get(mounts, i);
+        tot_kb = tot_kb + m.total_kb;
+        usd_kb = usd_kb + m.used_kb;
+        avl_kb = avl_kb + m.avail_kb;
+        ino_tot = ino_tot + m.inodes_total;
+        ino_usd = ino_usd + m.inodes_used;
+        ino_fre = ino_fre + m.inodes_free;
+        i = i + 1;
+    }
+
+    let use_pct: Int = if tot_kb > 0 { usd_kb * 100 / tot_kb } else { 0 };
+    let ino_pct: Int = if ino_tot > 0 { ino_usd * 100 / ino_tot } else { 0 };
+
+    return MountEntry {
+        filesystem: "total",
+        mount_point: "-",
+        fs_type: "-",
+        total_kb: tot_kb,
+        used_kb: usd_kb,
+        avail_kb: avl_kb,
+        use_pct: use_pct,
+        inodes_total: ino_tot,
+        inodes_used: ino_usd,
+        inodes_free: ino_fre,
+        inodes_pct: ino_pct,
+        is_pseudo: false
+    };
+}
+
+pub fn format_kb_size(
+    kb: Int,
+    human: Bool,
+    si: Bool,
+    block_kb: Int
+) -> String {
+    if human {
+        if kb < 1024 {
+            return to_string(kb) + "K";
+        }
+        if kb < 1048576 {
+            let mb: Int = kb / 1024;
+            return to_string(mb) + "M";
+        }
+        if kb < 1073741824 {
+            let gb: Int = kb / 1048576;
+            return to_string(gb) + "G";
+        }
+        let tb: Int = kb / 1073741824;
+        return to_string(tb) + "T";
+    }
+
+    if si {
+        if kb < 1000 {
+            return to_string(kb) + "k";
+        }
+        if kb < 1000000 {
+            let mb: Int = kb / 1000;
+            return to_string(mb) + "M";
+        }
+        let gb: Int = kb / 1000000;
+        return to_string(gb) + "G";
+    }
+
+    let b: Int = if block_kb > 0 { block_kb } else { 1 };
+    return to_string(kb / b);
+}

@@ -1,0 +1,119 @@
+// # oodf Demonstration Fixtures
+//
+// Logline: Synthetic multi-tier storage pool fixtures and demonstration mount table models.
+//
+// Setup: Demands no ambient authority; constructs deterministic storage mount structures.
+//
+// Beats:
+//   1. Construct synthetic multi-tier storage pool mount entries (NVMe, XFS, Ceph, ZFS, tmpfs).
+//   2. Construct synthetic /proc/mounts text document representation.
+//   3. Deliver structured MountEntry lists for testing and demonstration execution.
+//   4. Deliver demonstration query pipeline.
+
+import "core/df_types.oo";
+
+pub fn build_demo_mounts() -> List[MountEntry] {
+    let mut out: List[MountEntry] = list_new();
+
+    out = list_push(out, MountEntry {
+        filesystem: "/dev/nvme0n1p2",
+        mount_point: "/",
+        fs_type: "btrfs",
+        total_kb: 536870912, // 512 GB
+        used_kb: 193273528,  // 184 GB
+        avail_kb: 343597384, // 328 GB
+        use_pct: 36,
+        inodes_total: 33554432,
+        inodes_used: 12079595,
+        inodes_free: 21474837,
+        inodes_pct: 36,
+        is_pseudo: false
+    });
+
+    out = list_push(out, MountEntry {
+        filesystem: "/dev/nvme0n1p3",
+        mount_point: "/home",
+        fs_type: "xfs",
+        total_kb: 1073741824, // 1 TB
+        used_kb: 429496729,  // 410 GB
+        avail_kb: 644245095,  // 614 GB
+        use_pct: 40,
+        inodes_total: 67108864,
+        inodes_used: 26843545,
+        inodes_free: 40265319,
+        inodes_pct: 40,
+        is_pseudo: false
+    });
+
+    out = list_push(out, MountEntry {
+        filesystem: "ceph-pool:fs_data",
+        mount_point: "/mnt/storage",
+        fs_type: "ceph",
+        total_kb: 10737418240, // 10 TB
+        used_kb: 7516192768,   // 7 TB
+        avail_kb: 3221225472,  // 3 TB
+        use_pct: 70,
+        inodes_total: 134217728,
+        inodes_used: 93952409,
+        inodes_free: 40265319,
+        inodes_pct: 70,
+        is_pseudo: false
+    });
+
+    out = list_push(out, MountEntry {
+        filesystem: "zpool-fast/containers",
+        mount_point: "/var/lib/containers",
+        fs_type: "zfs",
+        total_kb: 2147483648, // 2 TB
+        used_kb: 1717986918,  // 1.6 TB
+        avail_kb: 429496730,  // 400 GB
+        use_pct: 80,
+        inodes_total: 16777216,
+        inodes_used: 13421772,
+        inodes_free: 3355444,
+        inodes_pct: 80,
+        is_pseudo: false
+    });
+
+    out = list_push(out, MountEntry {
+        filesystem: "tmpfs",
+        mount_point: "/run",
+        fs_type: "tmpfs",
+        total_kb: 33554432, // 32 GB
+        used_kb: 2097152,   // 2 GB
+        avail_kb: 31457280, // 30 GB
+        use_pct: 6,
+        inodes_total: 2097152,
+        inodes_used: 131072,
+        inodes_free: 1966080,
+        inodes_pct: 6,
+        is_pseudo: false
+    });
+
+    out = list_push(out, MountEntry {
+        filesystem: "proc",
+        mount_point: "/proc",
+        fs_type: "proc",
+        total_kb: 0,
+        used_kb: 0,
+        avail_kb: 0,
+        use_pct: 0,
+        inodes_total: 0,
+        inodes_used: 0,
+        inodes_free: 0,
+        inodes_pct: 0,
+        is_pseudo: true
+    });
+
+    return out;
+}
+
+pub fn build_demo_document() -> String {
+    let mut out: String = "/dev/nvme0n1p2 / btrfs rw,relatime 0 0\n";
+    out = out + "/dev/nvme0n1p3 /home xfs rw,relatime 0 0\n";
+    out = out + "ceph-pool:fs_data /mnt/storage ceph rw,relatime 0 0\n";
+    out = out + "zpool-fast/containers /var/lib/containers zfs rw,relatime 0 0\n";
+    out = out + "tmpfs /run tmpfs rw,nosuid,nodev,size=33554432k 0 0\n";
+    out = out + "proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0\n";
+    return out;
+}

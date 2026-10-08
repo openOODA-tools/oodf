@@ -1,0 +1,105 @@
+// # oodf IPC Subsystem Test Harness
+//
+// Logline: Unit tests and invariant verifications for CLI option parsing, JSON field extraction, and MCP protocol handling.
+//
+// Setup: Demands no ambient authority; exercises CLI parsing and JSON-RPC dispatch in isolation.
+//
+// Beats:
+//   1. Verify JSON substring search and field extraction utilities.
+//   2. Verify CLI argument parsing for flags, options, filters, and paths.
+//   3. Verify MCP JSON-RPC initialize and tools listing handshakes.
+//   4. Deliver unified IPC test runner returning boolean status.
+
+import "core/df_types.oo";
+import "ipc/json_field.oo";
+import "ipc/df_opts.oo";
+import "ipc/mcp_serve.oo";
+
+fn test_json_fields() -> Bool {
+    let raw: String = "{\"name\":\"oodf\",\"enabled\":true,\"count\":42,\"empty\":false}";
+    if json_extract_str_field(raw, "name") != "oodf" {
+        return false;
+    }
+    if !json_extract_bool_field(raw, "enabled", false) {
+        return false;
+    }
+    if json_extract_bool_field(raw, "empty", true) {
+        return false;
+    }
+    if json_extract_int_field(raw, "count", 0) != 42 {
+        return false;
+    }
+
+    let esc: String = json_escape("line1\nline2\t\"quoted\"");
+    if !str_contains(esc, "\\n") || !str_contains(esc, "\\\"") {
+        return false;
+    }
+
+    return true;
+}
+
+fn test_cli_opts() -> Bool {
+    let mut args: List[String] = list_new();
+    args = list_push(args, "-h");
+    args = list_push(args, "-i");
+    args = list_push(args, "--total");
+    args = list_push(args, "-t");
+    args = list_push(args, "ext4");
+    args = list_push(args, "-x");
+    args = list_push(args, "tmpfs");
+    args = list_push(args, "--theme");
+    args = list_push(args, "ocean");
+    args = list_push(args, "/home");
+
+    let act: CliAction = parse_cli_args(args);
+    if !act.config.human_readable {
+        return false;
+    }
+    if !act.config.show_inodes {
+        return false;
+    }
+    if !act.config.show_total {
+        return false;
+    }
+    if act.config.type_include != "ext4" {
+        return false;
+    }
+    if act.config.type_exclude != "tmpfs" {
+        return false;
+    }
+    if act.config.theme != "ocean" {
+        return false;
+    }
+    if act.config.target_path != "/home" {
+        return false;
+    }
+
+    return true;
+}
+
+fn test_mcp_frames() -> Bool {
+    let init_res: String = render_mcp_init("\"test-1\"");
+    if !str_contains(init_res, "\"name\":\"oodf\"") || !str_contains(init_res, "\"id\":\"test-1\"") {
+        return false;
+    }
+
+    let list_res: String = render_mcp_tools_list("\"test-2\"");
+    if !str_contains(list_res, "df_inspect") || !str_contains(list_res, "df_mounts") || !str_contains(list_res, "df_demo") {
+        return false;
+    }
+
+    return true;
+}
+
+pub fn run_all_ipc_tests() -> Bool {
+    if !test_json_fields() {
+        return false;
+    }
+    if !test_cli_opts() {
+        return false;
+    }
+    if !test_mcp_frames() {
+        return false;
+    }
+    return true;
+}

@@ -1,0 +1,125 @@
+// # oodf Render Subsystem Test Harness
+//
+// Logline: Unit tests and invariant verifications for table formatting, ANSI themes, and JSON outputs.
+//
+// Setup: Demands no ambient authority; verifies render subsystems in pure memory.
+//
+// Beats:
+//   1. Verify theme color escape sequences and progress bar rendering.
+//   2. Verify table header generation and row alignment for block and inode reports.
+//   3. Verify table grand total row rendering.
+//   4. Verify JSON object and array serialization formatting.
+
+import "core/df_types.oo";
+import "render/df_theme.oo";
+import "render/df_view.oo";
+import "render/df_json.oo";
+
+fn test_themes() -> Bool {
+    let reset_seq: String = color_reset();
+    if reset_seq != "\x1b[0m" {
+        return false;
+    }
+
+    let hdr_emb: String = theme_header("ember");
+    if chars_len(hdr_emb) == 0 {
+        return false;
+    }
+
+    let bar: String = format_bar(50, 10);
+    if bar != "[#####-----]" {
+        return false;
+    }
+
+    let alert_col: String = theme_pct(95, "ember");
+    if alert_col != "\x1b[1;31m" {
+        return false;
+    }
+
+    return true;
+}
+
+fn test_views() -> Bool {
+    let mut cfg: DfConfig = default_df_config();
+    let hdr: String = render_header(cfg);
+    if !str_contains(hdr, "Filesystem") || !str_contains(hdr, "1K-blocks") {
+        return false;
+    }
+
+    cfg.show_inodes = true;
+    let in_hdr: String = render_header(cfg);
+    if !str_contains(in_hdr, "Inodes") || !str_contains(in_hdr, "IUsed") {
+        return false;
+    }
+
+    let sample: MountEntry = MountEntry {
+        filesystem: "/dev/nvme0n1p2",
+        mount_point: "/",
+        fs_type: "ext4",
+        total_kb: 500000000,
+        used_kb: 250000000,
+        avail_kb: 250000000,
+        use_pct: 50,
+        inodes_total: 30000000,
+        inodes_used: 1500000,
+        inodes_free: 28500000,
+        inodes_pct: 5,
+        is_pseudo: false
+    };
+
+    let mut list: List[MountEntry] = list_new();
+    list = list_push(list, sample);
+
+    cfg.show_inodes = false;
+    cfg.show_total = true;
+    let tbl: String = render_table(list, cfg);
+    if !str_contains(tbl, "/dev/nvme0n1p2") || !str_contains(tbl, "total") {
+        return false;
+    }
+
+    return true;
+}
+
+fn test_json() -> Bool {
+    let sample: MountEntry = MountEntry {
+        filesystem: "/dev/sda1",
+        mount_point: "/boot",
+        fs_type: "vfat",
+        total_kb: 1048576,
+        used_kb: 524288,
+        avail_kb: 524288,
+        use_pct: 50,
+        inodes_total: 10000,
+        inodes_used: 100,
+        inodes_free: 9900,
+        inodes_pct: 1,
+        is_pseudo: false
+    };
+
+    let j: String = mount_to_json(sample);
+    if !str_contains(j, "\"filesystem\":\"/dev/sda1\"") || !str_contains(j, "\"mount_point\":\"/boot\"") {
+        return false;
+    }
+
+    let mut list: List[MountEntry] = list_new();
+    list = list_push(list, sample);
+    let arr: String = mounts_to_json(list);
+    if !str_starts_with(arr, "[{") || !str_ends_with(arr, "}]") {
+        return false;
+    }
+
+    return true;
+}
+
+pub fn run_all_render_tests() -> Bool {
+    if !test_themes() {
+        return false;
+    }
+    if !test_views() {
+        return false;
+    }
+    if !test_json() {
+        return false;
+    }
+    return true;
+}

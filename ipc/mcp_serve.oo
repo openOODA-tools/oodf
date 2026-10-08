@@ -1,0 +1,169 @@
+// # oodf Streaming MCP Server
+//
+// Logline: JSON-RPC 2.0 stdio server exposing disk capacity inspection, mount querying, and inode analysis.
+//
+// Setup: Bridges standard input/output streaming JSON-RPC to the storage inspection engine using bounded capability tokens.
+//
+// Beats:
+//   1. Handle MCP initialize handshake with server metadata and capability declaration.
+//   2. Expose tools/list catalogue with five sovereign disk inspection tools.
+//   3. Dispatch tools/call for df_inspect, df_mounts, df_inodes, df_path, and df_demo.
+//   4. Deliver streaming JSON-RPC responses over standard output.
+
+import "core/df_types.oo";
+import "core/mount_parser.oo";
+import "core/df_query.oo";
+import "core/df_demo.oo";
+import "render/df_view.oo";
+import "render/df_json.oo";
+import "ipc/json_field.oo";
+
+fn build_error(id: String, code: Int, msg: String) -> String {
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"error\":{\"code\":"
+        + to_string(code) + ",\"message\":\"" + json_escape(msg) + "\"}}\n";
+}
+
+fn build_tool_result(id: String, text: String) -> String {
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\""
+        + json_escape(text) + "\"}]}}\n";
+}
+
+pub fn render_mcp_init(id: String) -> String {
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + id
+        + ",\"result\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"oodf\",\"version\":\"0.2.0\"}}}\n";
+}
+
+pub fn render_mcp_tools_list(id: String) -> String {
+    let mut out: String = "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{\"tools\":[";
+    out = out + "{\"name\":\"df_inspect\",\"description\":\"Inspect filesystem capacity, block usage, and mount hierarchy.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"all\":{\"type\":\"boolean\"},\"human_readable\":{\"type\":\"boolean\"},\"inodes\":{\"type\":\"boolean\"},\"total\":{\"type\":\"boolean\"},\"type\":{\"type\":\"string\"},\"exclude_type\":{\"type\":\"string\"},\"json\":{\"type\":\"boolean\"},\"theme\":{\"type\":\"string\"}}}}";
+    out = out + ",{\"name\":\"df_mounts\",\"description\":\"Return raw JSON array of all active filesystem mounts.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{}}}";
+    out = out + ",{\"name\":\"df_inodes\",\"description\":\"Inspect inode consumption and free inode capacity.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"all\":{\"type\":\"boolean\"}}}}";
+    out = out + ",{\"name\":\"df_path\",\"description\":\"Inspect disk capacity specifically for a target path or block device.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}}";
+    out = out + ",{\"name\":\"df_demo\",\"description\":\"Return synthetic multi-filesystem storage showcase document.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{}}}";
+    out = out + "]}}\n";
+    return out;
+}
+
+fn load_active_mounts(fr: &FsReadCap) -> List[MountEntry] {
+    let entries: List[MountEntry] = read_mounts_file(fr, "/proc/mounts");
+    if list_len(entries) > 0 {
+        return entries;
+    }
+    return build_demo_mounts();
+}
+
+pub fn handle_mcp_call(fr: &FsReadCap, id: String, tool_name: String, req: String) -> String {
+    let mounts: List[MountEntry] = load_active_mounts(fr);
+
+    if tool_name == "df_inspect" {
+        let mut cfg: DfConfig = default_df_config();
+        cfg.show_all = json_extract_bool_field(req, "all", false);
+        cfg.human_readable = json_extract_bool_field(req, "human_readable", true);
+        cfg.show_inodes = json_extract_bool_field(req, "inodes", false);
+        cfg.show_total = json_extract_bool_field(req, "total", false);
+        cfg.json_output = json_extract_bool_field(req, "json", true);
+        cfg.type_include = json_extract_str_field(req, "type");
+        cfg.type_exclude = json_extract_str_field(req, "exclude_type");
+        let thm: String = json_extract_str_field(req, "theme");
+        if chars_len(thm) > 0 {
+            cfg.theme = thm;
+        }
+        cfg.target_path = json_extract_str_field(req, "path");
+
+        let filtered: List[MountEntry] = filter_mounts(mounts, cfg);
+        if cfg.json_output {
+            return build_tool_result(id, mounts_to_json(filtered));
+        }
+        return build_tool_result(id, render_table(filtered, cfg));
+    }
+
+    if tool_name == "df_mounts" {
+        return build_tool_result(id, mounts_to_json(mounts));
+    }
+
+    if tool_name == "df_inodes" {
+        let mut cfg: DfConfig = default_df_config();
+        cfg.show_inodes = true;
+        cfg.show_all = json_extract_bool_field(req, "all", false);
+        cfg.target_path = json_extract_str_field(req, "path");
+        let filtered: List[MountEntry] = filter_mounts(mounts, cfg);
+        return build_tool_result(id, render_table(filtered, cfg));
+    }
+
+    if tool_name == "df_path" {
+        let p: String = json_extract_str_field(req, "path");
+        let mut cfg: DfConfig = default_df_config();
+        cfg.target_path = p;
+        cfg.human_readable = true;
+        let filtered: List[MountEntry] = filter_mounts(mounts, cfg);
+        return build_tool_result(id, render_table(filtered, cfg));
+    }
+
+    if tool_name == "df_demo" {
+        return build_tool_result(id, build_demo_document());
+    }
+
+    return build_error(id, -32601, "Unknown tool: " + tool_name);
+}
+
+pub fn handle_mcp_message(fr: &FsReadCap, req: String) -> String {
+    let id_str: String = json_extract_str_field(req, "id");
+    let id_int: Int = json_extract_int_field(req, "id", -1);
+    let id: String = if chars_len(id_str) > 0 {
+        "\"" + id_str + "\""
+    } else if id_int >= 0 {
+        to_string(id_int)
+    } else {
+        "1"
+    };
+    let method: String = json_extract_str_field(req, "method");
+
+    if method == "initialize" {
+        return render_mcp_init(id);
+    }
+    if method == "notifications/initialized" {
+        return "";
+    }
+    if method == "tools/list" {
+        return render_mcp_tools_list(id);
+    }
+    if method == "tools/call" {
+        let tool_name: String = json_extract_str_field(req, "name");
+        return handle_mcp_call(fr, id, tool_name, req);
+    }
+    if method == "shutdown" {
+        return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":null}\n";
+    }
+    return build_error(id, -32601, "Method not found: " + method);
+}
+
+pub fn run_mcp_server(fr: &FsReadCap) {
+    let mut buf: String = "";
+    let mut running: Bool = true;
+    while running {
+        let r: Result[String, String] = oo_read_stdin_chunk(fr, 4096);
+        if !r.is_ok() {
+            running = false;
+        } else {
+            let chunk: String = match r { Ok(s) => s, Err(_) => "" };
+            if chars_len(chunk) == 0 {
+                running = false;
+            } else {
+                buf = buf + chunk;
+                let mut nl_pos: Int = find_sub_char(buf, "\n");
+                while nl_pos >= 0 {
+                    let line: String = str_slice(buf, 0, nl_pos);
+                    buf = str_slice(buf, nl_pos + 1, chars_len(buf));
+                    let trimmed: String = str_trim(line);
+                    if chars_len(trimmed) > 0 {
+                        let resp: String = handle_mcp_message(fr, trimmed);
+                        if chars_len(resp) > 0 {
+                            print(resp);
+                        }
+                    }
+                    nl_pos = find_sub_char(buf, "\n");
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,112 @@
+// # oodf Tabular Disk Space View Renderer
+//
+// Logline: Renders formatted, aligned POSIX disk space and inode tables with optional ANSI theme styling.
+//
+// Setup: Demands no ambient authority; consumes MountEntry list and DfConfig.
+//
+// Beats:
+//   1. Calculate column alignments and dynamic spacing for block and inode reports.
+//   2. Format header rows matching standard POSIX and GNU df conventions.
+//   3. Render filesystem data rows with capacity metrics, percentages, and mount paths.
+//   4. Append optional grand total summary row when requested.
+
+import "core/df_types.oo";
+import "core/df_query.oo";
+import "render/df_theme.oo";
+
+fn pad_right(s: String, width: Int) -> String {
+    let mut out: String = s;
+    let n: Int = chars_len(s);
+    let mut i: Int = n;
+    while i < width {
+        out = out + " ";
+        i = i + 1;
+    }
+    return out;
+}
+
+fn pad_left(s: String, width: Int) -> String {
+    let n: Int = chars_len(s);
+    let mut out: String = "";
+    let mut i: Int = n;
+    while i < width {
+        out = out + " ";
+        i = i + 1;
+    }
+    return out + s;
+}
+
+pub fn render_header(cfg: DfConfig) -> String {
+    let col: String = theme_header(cfg.theme);
+    let rst: String = color_reset();
+
+    let fs_hdr: String = pad_right("Filesystem", 20);
+    let type_hdr: String = pad_right("Type", 10);
+
+    if cfg.show_inodes {
+        let in_tot: String = pad_left("Inodes", 10);
+        let in_usd: String = pad_left("IUsed", 10);
+        let in_fre: String = pad_left("IFree", 10);
+        let in_pct: String = pad_left("IUse%", 6);
+        let mp_hdr: String = " Mounted on";
+        return col + fs_hdr + " " + type_hdr + " " + in_tot + " " + in_usd + " " + in_fre + " " + in_pct + mp_hdr + rst;
+    }
+
+    let sz_label: String = if cfg.human_readable { "Size" } else if cfg.block_size_kb == 1024 { "1M-blocks" } else { "1K-blocks" };
+    let sz_hdr: String = pad_left(sz_label, 12);
+    let usd_hdr: String = pad_left("Used", 11);
+    let avl_hdr: String = pad_left("Avail", 11);
+    let pct_hdr: String = pad_left("Use%", 6);
+    let mp_hdr: String = " Mounted on";
+
+    return col + fs_hdr + " " + type_hdr + " " + sz_hdr + " " + usd_hdr + " " + avl_hdr + " " + pct_hdr + mp_hdr + rst;
+}
+
+pub fn render_row(m: MountEntry, cfg: DfConfig) -> String {
+    let rst: String = color_reset();
+    let fs_col: String = if m.filesystem == "total" { theme_total(cfg.theme) } else { theme_dev(cfg.theme) };
+    let typ_col: String = theme_type(cfg.theme);
+    let mnt_col: String = theme_mount(cfg.theme);
+
+    let fs_str: String = pad_right(m.filesystem, 20);
+    let type_str: String = pad_right(m.fs_type, 10);
+
+    if cfg.show_inodes {
+        let ino_tot_s: String = pad_left(to_string(m.inodes_total), 10);
+        let ino_usd_s: String = pad_left(to_string(m.inodes_used), 10);
+        let ino_fre_s: String = pad_left(to_string(m.inodes_free), 10);
+        let pct_col: String = theme_pct(m.inodes_pct, cfg.theme);
+        let ino_pct_s: String = pad_left(to_string(m.inodes_pct) + "%", 6);
+        return fs_col + fs_str + rst + " " + typ_col + type_str + rst + " " +
+               ino_tot_s + " " + ino_usd_s + " " + ino_fre_s + " " +
+               pct_col + ino_pct_s + rst + " " + mnt_col + m.mount_point + rst;
+    }
+
+    let sz_str: String = pad_left(format_kb_size(m.total_kb, cfg.human_readable, cfg.si_units, cfg.block_size_kb), 12);
+    let usd_str: String = pad_left(format_kb_size(m.used_kb, cfg.human_readable, cfg.si_units, cfg.block_size_kb), 11);
+    let avl_str: String = pad_left(format_kb_size(m.avail_kb, cfg.human_readable, cfg.si_units, cfg.block_size_kb), 11);
+    let pct_col: String = theme_pct(m.use_pct, cfg.theme);
+    let pct_str: String = pad_left(to_string(m.use_pct) + "%", 6);
+
+    return fs_col + fs_str + rst + " " + typ_col + type_str + rst + " " +
+           sz_str + " " + usd_str + " " + avl_str + " " +
+           pct_col + pct_str + rst + " " + mnt_col + m.mount_point + rst;
+}
+
+pub fn render_table(mounts: List[MountEntry], cfg: DfConfig) -> String {
+    let mut out: String = render_header(cfg) + "\n";
+    let n: Int = list_len(mounts);
+    let mut i: Int = 0;
+    while i < n {
+        let m: MountEntry = list_get(mounts, i);
+        out = out + render_row(m, cfg) + "\n";
+        i = i + 1;
+    }
+
+    if cfg.show_total && n > 0 {
+        let tot: MountEntry = compute_total_summary(mounts);
+        out = out + render_row(tot, cfg) + "\n";
+    }
+
+    return out;
+}

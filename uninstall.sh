@@ -4,7 +4,7 @@
 # "Removes oodf binary, package installations, and cache."
 #
 # Usage:
-#   curl -fsSL https://openooda-toodf.github.io/oodf/uninstall.sh | bash
+#   curl -fsSL https://openooda-tools.github.io/oodf/uninstall.sh | bash
 #   or: ./uninstall.sh [options]
 #
 # Options:
